@@ -52,48 +52,63 @@ function App() {
     }
   };
 
-  const sendEmailNotification = async (selectedResponse) => {
-    if (sending) return;
+ 
+const sendEmailNotification = async (selectedResponse) => {
+  if (sending) return;
 
-    const API_URL =
-      import.meta.env.VITE_API_URL || "http://localhost:5001";
+  const API_URL = (
+    import.meta.env.VITE_API_URL || "http://localhost:5001"
+  ).replace(/\/+$/, "");
 
-    setSending(true);
-    setPendingChoice(selectedResponse);
-    setNotificationStatus("");
+  setSending(true);
+  setPendingChoice(selectedResponse);
+  setNotificationStatus("");
+
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
+
+    let response;
 
     try {
-      const response = await fetch(
-        `${API_URL}/api/proposal-response`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            response: selectedResponse,
-          }),
-        }
-      );
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.message || "Notification failed.");
-      }
-
-      setAnswer(selectedResponse);
-      setNotificationStatus("Your response has been received ❤️");
-    } catch (error) {
-      console.error("Email notification error:", error);
-      setNotificationStatus(
-        "Something went wrong. Please try again."
-      );
+      response = await fetch(`${API_URL}/api/proposal-response`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          response: selectedResponse,
+        }),
+        signal: controller.signal,
+      });
     } finally {
-      setSending(false);
-      setPendingChoice("");
+      clearTimeout(timeoutId);
     }
-  };
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.message || "Notification failed.");
+    }
+
+    setAnswer(selectedResponse);
+    setNotificationStatus("Your response has been received ❤️");
+
+  } catch (error) {
+    console.error("Email notification error:", error);
+
+    setNotificationStatus(
+      error.name === "AbortError"
+        ? "The request timed out. Please try again."
+        : "Something went wrong. Please try again."
+    );
+  } finally {
+    setSending(false);
+    setPendingChoice("");
+  }
+};
+
+
   const sendPersonalMessage = async () => {
     if (sendingMessage) return;
 
