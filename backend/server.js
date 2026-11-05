@@ -3,7 +3,6 @@ import express from "express";
 import cors from "cors";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
-import nodemailer from "nodemailer";
 import dotenv from "dotenv";
 
 dotenv.config();
@@ -59,56 +58,48 @@ const messageLimiter = rateLimit({
     message: "Too many messages. Please try again later.",
   },
 });
-
 // ======================================
-// EMAIL CONFIGURATION
+// RESEND EMAIL CONFIGURATION
 // ======================================
 
-const {
-  EMAIL_USER,
-  EMAIL_APP_PASSWORD,
-  NOTIFY_EMAIL,
-} = process.env;
+const { RESEND_API_KEY, NOTIFY_EMAIL } = process.env;
 
-let transporter = null;
-
-if (EMAIL_USER && EMAIL_APP_PASSWORD && NOTIFY_EMAIL) {
-  transporter = nodemailer.createTransport({
-    service: "gmail",
-    auth: {
-      user: EMAIL_USER,
-      pass: EMAIL_APP_PASSWORD,
-    },
-  });
-} else {
-  console.error("Email environment variables are missing.");
+if (!RESEND_API_KEY || !NOTIFY_EMAIL) {
+  console.error("Resend email environment variables are missing.");
 }
 
 const sendNotificationEmail = async (mailOptions) => {
-  if (!transporter) {
-    throw new Error("Email notifications are not configured.");
+  if (!RESEND_API_KEY || !NOTIFY_EMAIL) {
+    throw new Error("Resend email notifications are not configured.");
   }
 
-  return transporter.sendMail({
-    from: `"Our Love Story" <${EMAIL_USER}>`,
-    to: NOTIFY_EMAIL,
-    ...mailOptions,
+  const response = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${RESEND_API_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      from: "Our Love Story <onboarding@resend.dev>",
+      to: [NOTIFY_EMAIL],
+      subject: mailOptions.subject,
+      text: mailOptions.text,
+      html: mailOptions.html,
+    }),
   });
-};
 
-// Escape HTML to safely display user-written messages
-const escapeHtml = (text) => {
-  return text.replace(/[&<>"']/g, (character) => {
-    const entities = {
-      "&": "&amp;",
-      "<": "&lt;",
-      ">": "&gt;",
-      '"': "&quot;",
-      "'": "&#39;",
-    };
+  const data = await response.json();
 
-    return entities[character];
-  });
+  if (!response.ok) {
+    console.error("Resend API error:", data);
+    throw new Error(
+      data.message || "Failed to send notification email."
+    );
+  }
+
+  console.log("Email sent successfully through Resend:", data.id);
+
+  return data;
 };
 
 // ======================================
