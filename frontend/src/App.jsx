@@ -66,7 +66,7 @@ const sendEmailNotification = async (selectedResponse) => {
 
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 15000);
+    const timeoutId = setTimeout(() => controller.abort(), 90000);
 
     let response;
 
