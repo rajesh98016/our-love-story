@@ -1,5 +1,4 @@
-
-import React, { useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import {
   Heart,
@@ -9,6 +8,34 @@ import {
   Mail,
   ArrowDown,
 } from "lucide-react";
+
+const API_URL = (
+  import.meta.env.VITE_API_URL || "http://localhost:5001"
+).replace(/\/+$/, "");
+
+const postJson = async (path, body, timeoutMs = 90000) => {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const response = await fetch(`${API_URL}${path}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      throw new Error(data.message || "Request failed.");
+    }
+
+    return data;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+};
 
 function App() {
   const [started, setStarted] = useState(false);
@@ -21,6 +48,11 @@ function App() {
   const [sendingMessage, setSendingMessage] = useState(false);
   const [messageStatus, setMessageStatus] = useState("");
   const audioRef = useRef(null);
+
+  // Wake up the backend (Render free tier sleeps when idle)
+  useEffect(() => {
+    fetch(`${API_URL}/api/health`).catch(() => {});
+  }, []);
 
   const scrollTo = (id) => {
     document.getElementById(id)?.scrollIntoView({
@@ -52,62 +84,32 @@ function App() {
     }
   };
 
- 
-const sendEmailNotification = async (selectedResponse) => {
-  if (sending) return;
+  const sendEmailNotification = async (selectedResponse) => {
+    if (sending) return;
 
-  const API_URL = (
-    import.meta.env.VITE_API_URL || "http://localhost:5001"
-  ).replace(/\/+$/, "");
-
-  setSending(true);
-  setPendingChoice(selectedResponse);
-  setNotificationStatus("");
-
-  try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 90000);
-
-    let response;
+    setSending(true);
+    setPendingChoice(selectedResponse);
+    setNotificationStatus("");
 
     try {
-      response = await fetch(`${API_URL}/api/proposal-response`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          response: selectedResponse,
-        }),
-        signal: controller.signal,
+      await postJson("/api/proposal-response", {
+        response: selectedResponse,
       });
+
+      setAnswer(selectedResponse);
+      setNotificationStatus("Your response has been received ❤️");
+    } catch (error) {
+      console.error("Email notification error:", error);
+      setNotificationStatus(
+        error.name === "AbortError"
+          ? "The request timed out. Please try again."
+          : "Something went wrong. Please try again."
+      );
     } finally {
-      clearTimeout(timeoutId);
+      setSending(false);
+      setPendingChoice("");
     }
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      throw new Error(data.message || "Notification failed.");
-    }
-
-    setAnswer(selectedResponse);
-    setNotificationStatus("Your response has been received ❤️");
-
-  } catch (error) {
-    console.error("Email notification error:", error);
-
-    setNotificationStatus(
-      error.name === "AbortError"
-        ? "The request timed out. Please try again."
-        : "Something went wrong. Please try again."
-    );
-  } finally {
-    setSending(false);
-    setPendingChoice("");
-  }
-};
-
+  };
 
   const sendPersonalMessage = async () => {
     if (sendingMessage) return;
@@ -117,38 +119,22 @@ const sendEmailNotification = async (selectedResponse) => {
       return;
     }
 
-    const API_URL = (
-      import.meta.env.VITE_API_URL || "http://localhost:5001"
-    ).replace(/\/+$/, "");
     setSendingMessage(true);
     setMessageStatus("");
 
     try {
-      const response = await fetch(
-        `${API_URL}/api/proposal-message`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            message: personalMessage,
-          }),
-        }
-      );
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.message || "Could not send your message.");
-      }
+      await postJson("/api/proposal-message", {
+        message: personalMessage,
+      });
 
       setMessageStatus("Your message has been sent to me. ❤️");
       setPersonalMessage("");
     } catch (error) {
       console.error("Personal message error:", error);
       setMessageStatus(
-        error.message || "Something went wrong. Please try again."
+        error.name === "AbortError"
+          ? "The request timed out. Please try again."
+          : "Something went wrong. Please try again."
       );
     } finally {
       setSendingMessage(false);
@@ -167,11 +153,7 @@ const sendEmailNotification = async (selectedResponse) => {
   return (
     <main>
       {/* BACKGROUND MUSIC */}
-      <audio
-        ref={audioRef}
-        src="/music/romantic-song.mp3"
-        loop
-      />
+      <audio ref={audioRef} src="/music/romantic-song.mp3" loop />
 
       {/* MUSIC CONTROL */}
       <button
@@ -188,7 +170,6 @@ const sendEmailNotification = async (selectedResponse) => {
           className="welcome-screen"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
         >
           <motion.div
             className="welcome-content"
@@ -198,9 +179,7 @@ const sendEmailNotification = async (selectedResponse) => {
           >
             <Sparkles className="welcome-sparkle" size={30} />
 
-            <p className="eyebrow">
-              A LITTLE SOMETHING FROM MY HEART
-            </p>
+            <p className="eyebrow">A LITTLE SOMETHING FROM MY HEART</p>
 
             <h1>
               For
@@ -209,27 +188,22 @@ const sendEmailNotification = async (selectedResponse) => {
             </h1>
 
             <p className="welcome-description">
-              Some people enter our lives unexpectedly. And
-              somehow, without even trying, they make ordinary
-              moments feel extraordinary.
+              Some people enter our lives unexpectedly. And somehow,
+              without even trying, they make ordinary moments feel
+              extraordinary.
             </p>
 
             <p className="welcome-description">
-              This little website holds a few memories, a few
-              feelings, and something I've wanted to tell you.
+              This little website holds a few memories, a few feelings,
+              and something I've wanted to tell you.
             </p>
 
-            <button
-              className="primary-button"
-              onClick={handleStart}
-            >
+            <button className="primary-button" onClick={handleStart}>
               Open your little surprise
               <Heart size={17} fill="currentColor" />
             </button>
 
-            <p className="welcome-footer">
-              Made with a little love ♡
-            </p>
+            <p className="welcome-footer">Made with a little love ♡</p>
           </motion.div>
         </motion.div>
       )}
@@ -256,9 +230,8 @@ const sendEmailNotification = async (selectedResponse) => {
               </h1>
 
               <p className="hero-description">
-                Some stories begin with a simple hello. Ours
-                became a collection of moments I never want
-                to forget.
+                Some stories begin with a simple hello. Ours became a
+                collection of moments I never want to forget.
               </p>
 
               <button
@@ -270,19 +243,14 @@ const sendEmailNotification = async (selectedResponse) => {
               </button>
             </motion.div>
 
-            <div className="scroll-indicator">
-              SCROLL TO READ ↓
-            </div>
+            <div className="scroll-indicator">SCROLL TO READ ↓</div>
 
             <span className="floating-heart heart-one">♡</span>
             <span className="floating-heart heart-two">♡</span>
           </section>
 
           {/* CHAPTER ONE */}
-          <section
-            className="section story-section"
-            id="chapter-one"
-          >
+          <section className="section story-section" id="chapter-one">
             <motion.div
               initial="hidden"
               whileInView="visible"
@@ -297,32 +265,29 @@ const sendEmailNotification = async (selectedResponse) => {
 
               <div className="story-content">
                 <p>
-                  It started in the most ordinary way. I used
-                  to pass by your PG whenever I went to the
-                  market. One day, while I was returning, you
-                  were walking with your friend. Your friend
-                  asked for my Instagram ID, I shared it, and
-                  that little moment became the beginning of
-                  our conversations.
+                  It started in the most ordinary way. I used to pass by
+                  your PG whenever I went to the market. One day, while I
+                  was returning, you were walking with your friend. Your
+                  friend asked for my Instagram ID, I shared it, and that
+                  little moment became the beginning of our
+                  conversations.
                 </p>
 
                 <p>
-                  Then came the day I saw you in person for
-                  the first time. You were coming downstairs
-                  to receive a Zepto order. I was around fifty
-                  metres away. You noticed me, got shy, and
-                  quickly went back inside. Even today,
-                  whenever I think about that moment, it
-                  brings a smile to my face.
+                  Then came the day I saw you in person for the first
+                  time. You were coming downstairs to receive a Zepto
+                  order. I was around fifty metres away. You noticed me,
+                  got shy, and quickly went back inside. Even today,
+                  whenever I think about that moment, it brings a smile
+                  to my face.
                 </p>
 
                 <p>
-                  Two days later, we met in my colony and went
-                  for a walk together. Our first walk was
-                  around <strong>8 kilometres</strong>. Since
-                  then, there have been so many more walks,
-                  conversations, and little memories that
-                  mean a lot to me.
+                  Two days later, we met in my colony and went for a walk
+                  together. Our first walk was around{" "}
+                  <strong>8 kilometres</strong>. Since then, there have
+                  been so many more walks, conversations, and little
+                  memories that mean a lot to me.
                 </p>
               </div>
 
@@ -350,8 +315,7 @@ const sendEmailNotification = async (selectedResponse) => {
               </h2>
 
               <p className="section-lead">
-                Some things don't need photographs to be
-                remembered.
+                Some things don't need photographs to be remembered.
               </p>
 
               <div className="memory-grid">
@@ -395,9 +359,7 @@ const sendEmailNotification = async (selectedResponse) => {
                     viewport={{ once: true }}
                     transition={{ delay: index * 0.1 }}
                   >
-                    <div className="note-icon">
-                      {item.icon}
-                    </div>
+                    <div className="note-icon">{item.icon}</div>
 
                     <div className="memory-caption">
                       <h3>{item.title}</h3>
@@ -408,17 +370,14 @@ const sendEmailNotification = async (selectedResponse) => {
               </div>
 
               <p className="memory-ending">
-                "Some of my favourite memories are the ones I
-                carry in my heart." ♡
+                "Some of my favourite memories are the ones I carry in my
+                heart." ♡
               </p>
             </motion.div>
           </section>
 
           {/* CHAPTER THREE — CONFESSION */}
-          <section
-            className="section confession-section"
-            id="confession"
-          >
+          <section className="section confession-section" id="confession">
             <motion.div
               initial="hidden"
               whileInView="visible"
@@ -444,21 +403,16 @@ const sendEmailNotification = async (selectedResponse) => {
                   I fell for you.
                 </p>
 
-                <Heart
-                  className="declaration-heart"
-                  fill="currentColor"
-                />
+                <Heart className="declaration-heart" fill="currentColor" />
 
                 <p className="confession-message">
-                  Your smile, your little habits, and the way
-                  you make even ordinary moments feel special...
-                  somewhere along the way, you became someone
-                  I hold very close to my heart.
+                  Your smile, your little habits, and the way you make
+                  even ordinary moments feel special... somewhere along
+                  the way, you became someone I hold very close to my
+                  heart.
                 </p>
 
-                <p className="three-words">
-                  Three little words...
-                </p>
+                <p className="three-words">Three little words...</p>
 
                 <h2 className="love-confession">
                   I Love You,
@@ -467,8 +421,8 @@ const sendEmailNotification = async (selectedResponse) => {
                 </h2>
 
                 <p className="confession-ending">
-                  I don't expect you to say it back. I just
-                  wanted you to know what's in my heart. ♡
+                  I don't expect you to say it back. I just wanted you to
+                  know what's in my heart. ♡
                 </p>
               </div>
             </motion.div>
@@ -493,26 +447,24 @@ const sendEmailNotification = async (selectedResponse) => {
                 <h2>Dear Arpita Jii,</h2>
 
                 <p>
-                  I may not always find the perfect words to
-                  express what's on my mind, but I hope this
-                  little note says what sometimes remains
-                  unspoken.
+                  I may not always find the perfect words to express
+                  what's on my mind, but I hope this little note says
+                  what sometimes remains unspoken.
                 </p>
 
                 <p>
-                  I want you to know that I genuinely value
-                  the connection we share. I don't know what
-                  the future holds, and I don't want to rush
-                  anything. I'd simply love to keep getting
-                  to know you, laughing together, and creating
-                  more memories along the way.
+                  I want you to know that I genuinely value the
+                  connection we share. I don't know what the future
+                  holds, and I don't want to rush anything. I'd simply
+                  love to keep getting to know you, laughing together,
+                  and creating more memories along the way.
                 </p>
 
                 <p>
-                  There's no pressure and no expectation.
-                  Whatever you feel, I'll respect it. I just
-                  wanted to be honest with you and give you a
-                  little glimpse of what's in my heart.
+                  There's no pressure and no expectation. Whatever you
+                  feel, I'll respect it. I just wanted to be honest with
+                  you and give you a little glimpse of what's in my
+                  heart.
                 </p>
 
                 <p className="signature">
@@ -525,8 +477,6 @@ const sendEmailNotification = async (selectedResponse) => {
           </section>
 
           {/* FINAL PROPOSAL */}
-
-          {/* FINAL PROPOSAL */}
           <section className="section proposal-section">
             <motion.div
               initial="hidden"
@@ -534,14 +484,9 @@ const sendEmailNotification = async (selectedResponse) => {
               viewport={{ once: true, amount: 0.2 }}
               variants={fadeUp}
             >
-              <Heart
-                className="proposal-heart"
-                fill="currentColor"
-              />
+              <Heart className="proposal-heart" fill="currentColor" />
 
-              <span className="eyebrow">
-                ONE LITTLE QUESTION
-              </span>
+              <span className="eyebrow">ONE LITTLE QUESTION</span>
 
               <h2>
                 Would you like to
@@ -552,16 +497,17 @@ const sendEmailNotification = async (selectedResponse) => {
               </h2>
 
               <p className="proposal-description">
-                I don't know what tomorrow holds, but I'd love
-                to find out, one little moment at a time.
+                I don't know what tomorrow holds, but I'd love to find
+                out, one little moment at a time.
               </p>
 
               {/* PROPOSAL RESPONSE BUTTONS */}
               {!answer ? (
                 <div className="proposal-buttons">
                   <button
-                    className={`yes-button ${pendingChoice === "yes" ? "button-loading" : ""
-                      }`}
+                    className={`yes-button ${
+                      pendingChoice === "yes" ? "button-loading" : ""
+                    }`}
                     onClick={() => sendEmailNotification("yes")}
                     disabled={sending}
                   >
@@ -571,8 +517,9 @@ const sendEmailNotification = async (selectedResponse) => {
                   </button>
 
                   <button
-                    className={`think-button ${pendingChoice === "think" ? "button-loading" : ""
-                      }`}
+                    className={`think-button ${
+                      pendingChoice === "think" ? "button-loading" : ""
+                    }`}
                     onClick={() => sendEmailNotification("think")}
                     disabled={sending}
                   >
@@ -582,7 +529,6 @@ const sendEmailNotification = async (selectedResponse) => {
                   </button>
                 </div>
               ) : (
-                /* RESPONSE SUCCESS MESSAGE */
                 <motion.div
                   className="answer-message"
                   initial={{ opacity: 0, scale: 0.8 }}
@@ -592,9 +538,7 @@ const sendEmailNotification = async (selectedResponse) => {
                   {answer === "yes" ? (
                     <>
                       <h2>You've made me smile! ❤️</h2>
-                      <p>
-                        Here's to more beautiful memories together.
-                      </p>
+                      <p>Here's to more beautiful memories together.</p>
                     </>
                   ) : (
                     <>
@@ -610,9 +554,7 @@ const sendEmailNotification = async (selectedResponse) => {
 
               {/* PROPOSAL EMAIL STATUS */}
               {notificationStatus && (
-                <p className="notification-status">
-                  {notificationStatus}
-                </p>
+                <p className="notification-status">{notificationStatus}</p>
               )}
 
               {/* PERSONAL MESSAGE BOX */}
@@ -625,9 +567,7 @@ const sendEmailNotification = async (selectedResponse) => {
               >
                 <h3>Or leave me a little message 💌</h3>
 
-                <p>
-                  Whatever is on your mind, I'd love to hear it.
-                </p>
+                <p>Whatever is on your mind, I'd love to hear it.</p>
 
                 <textarea
                   value={personalMessage}
@@ -656,14 +596,11 @@ const sendEmailNotification = async (selectedResponse) => {
                 </div>
 
                 {messageStatus && (
-                  <p className="message-status">
-                    {messageStatus}
-                  </p>
+                  <p className="message-status">{messageStatus}</p>
                 )}
               </motion.div>
             </motion.div>
           </section>
-
 
           {/* FOOTER */}
           <footer className="footer">
