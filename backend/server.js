@@ -11,18 +11,22 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 5001;
 
-const allowedOrigin =
-  process.env.FRONTEND_URL || "http://localhost:5173";
-
-// ======================================
-// SECURITY MIDDLEWARE
-// ======================================
-
 app.use(helmet());
+
+const allowedOrigins = [
+  "http://localhost:5173",
+  process.env.FRONTEND_URL,
+].filter(Boolean);
 
 app.use(
   cors({
-    origin: allowedOrigin,
+    origin: (origin, callback) => {
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error("Not allowed by CORS"));
+      }
+    },
     methods: ["GET", "POST"],
     allowedHeaders: ["Content-Type"],
   })
@@ -314,9 +318,6 @@ Sent from your Our Love Story website.`,
 // ======================================
 // START SERVER
 // ======================================
-
-app.listen(PORT, () => {
-  console.log(
-    `Backend running at http://localhost:${PORT}`
-  );
+app.listen(PORT, "0.0.0.0", () => {
+  console.log(`Backend running on port ${PORT}`);
 });
