@@ -184,7 +184,7 @@ function App() {
             <h1>
               For
               <br />
-              <em>Arpita Jii</em>
+              <em>Arpita</em>
             </h1>
 
             <p className="welcome-description">
@@ -226,7 +226,7 @@ function App() {
               <h1>
                 For
                 <br />
-                <em>Arpita Jii</em>
+                <em>Arpita</em>
               </h1>
 
               <p className="hero-description">
